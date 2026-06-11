@@ -12,7 +12,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const SCRIPT_PATH = path.join(PROJECT_ROOT, 'vbpl_reformat.py');
 const PYTHON_BIN = process.env.PYTHON_BIN ?? (process.platform === 'win32' ? 'python' : 'python3');
 const PORT = Number(process.env.PORT ?? 3001);
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024; // 4.5 MB (Vercel request body limit)
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 

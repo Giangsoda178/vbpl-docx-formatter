@@ -91,6 +91,6 @@ node test/test_api.mjs          # end-to-end API tests
 `POST /api/format` — multipart form with a `file` field containing a `.docx`.
 
 - `200` — formatted document (`Content-Disposition` carries `<name>_formatted.docx`)
-- `400` — missing file, wrong type, or file over 20 MB
+- `400` — missing file, wrong type, or file over 4.5 MB
 - `422` — document structure not recognized (e.g. missing the national-emblem header table) or corrupt file; body is `{ "error": "<message>" }`
 - `500` — unexpected processing error
