@@ -115,6 +115,10 @@ formatBtn.addEventListener('click', async () => {
 });
 
 async function readErrorMessage(response: Response): Promise<string> {
+  // Vercel rejects bodies over 4.5 MB before they reach the API.
+  if (response.status === 413) {
+    return 'File quá lớn. Kích thước tối đa là 4,5 MB.';
+  }
   try {
     const data = (await response.json()) as { error?: string };
     if (data.error) return data.error;
