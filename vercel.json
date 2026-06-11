@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "vite build client",
+  "outputDirectory": "client/dist",
+  "functions": {
+    "api/format.py": {
+      "maxDuration": 60,
+      "includeFiles": "vbpl_reformat.py"
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

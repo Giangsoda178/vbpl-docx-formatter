@@ -49,6 +49,7 @@ try:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+    from docx.opc.exceptions import PackageNotFoundError
     from docx.text.paragraph import Paragraph
 except ImportError as exc:
     raise ImportError(
@@ -960,6 +961,10 @@ def main():
 
     try:
         reformat(input_path, output_path, verbose=not args.quiet)
+    except PackageNotFoundError:
+        print("❌ File bị hỏng hoặc không phải định dạng Word (.docx) hợp lệ.",
+              file=sys.stderr)
+        sys.exit(2)
     except ValueError as e:
         print(f"❌ Lỗi khi xử lý: {e}", file=sys.stderr)
         sys.exit(2)

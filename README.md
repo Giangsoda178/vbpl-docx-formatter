@@ -1,66 +1,96 @@
-# vbpl_reformat.py
+# VBPL DOCX Formatter
 
-Định dạng lại file Word (.docx) văn bản pháp luật Việt Nam theo chuẩn (Times New Roman 14pt, justify, thụt dòng 0.5", v.v.).
+Web app for reformatting Vietnamese legal documents (Nghị định, Luật, Thông tư, Quyết định, Nghị quyết, Chỉ thị) in `.docx` format to the standard administrative document style (Times New Roman 14pt, justified, first-line indent, bold Điều/Chương/Mục headings, italic Căn cứ, …).
 
-## Yêu cầu
+Upload a `.docx` in the browser → the backend runs [vbpl_reformat.py](vbpl_reformat.py) → download the formatted result.
 
-- Python 3.9+
-- Gói `python-docx`
+## Architecture
 
-Trên macOS với Python cài qua Homebrew, hệ thống bị khóa cài gói toàn cục (PEP 668), nên dùng **venv** là cách an toàn nhất.
+- **[client/](client/)** — Vite + TypeScript single-page frontend (drag-and-drop upload, download)
+- **[server/](server/)** — Express + TypeScript API; `POST /api/format` writes the upload to a temp dir, spawns the Python script, streams back the formatted file, and cleans up (used for local dev / self-hosting)
+- **[api/format.py](api/format.py)** — the same `POST /api/format` endpoint as a Vercel Python serverless function; calls the formatting engine in-process (used on Vercel)
+- **[vbpl_reformat.py](vbpl_reformat.py)** — the formatting engine (python-docx)
 
-## Cài đặt (lần đầu)
+## Prerequisites
 
-```bash
-# Tạo venv cố định trong thư mục home
-python3 -m venv ~/.venvs/vbpl
+- Node.js ≥ 20
+- Python 3 with `python-docx` (`pip install python-docx`)
 
-# Cài python-docx vào venv
-~/.venvs/vbpl/bin/pip install python-docx
+## Setup
+
+```sh
+npm install
 ```
 
-## Chạy script
+## Development
 
-```bash
-# Mặc định: xuất ra <input>_formatted.docx cùng thư mục
-~/.venvs/vbpl/bin/python ~/Downloads/vbpl_reformat.py "<đường_dẫn_input.docx>"
-
-# Chỉ định file output
-~/.venvs/vbpl/bin/python ~/Downloads/vbpl_reformat.py "<input.docx>" "<output.docx>"
-
-# Tắt log chi tiết
-~/.venvs/vbpl/bin/python ~/Downloads/vbpl_reformat.py -q "<input.docx>"
+```sh
+npm run dev
 ```
 
-### Ví dụ
+Runs the API server on http://localhost:3001 and the Vite dev server (with `/api` proxy) on http://localhost:5173. Open the latter.
 
-```bash
-~/.venvs/vbpl/bin/python ~/Downloads/vbpl_reformat.py \
-    "~/Desktop/VBPL/7_2026_TT-BNV_704494.docx"
+## Production
+
+```sh
+npm run build
+npm run start
 ```
 
-Kết quả: `~/Desktop/VBPL/7_2026_TT-BNV_704494_formatted.docx`
+Builds the client and server, then serves both from http://localhost:3001.
 
-## Rút gọn lệnh (tùy chọn)
+Environment variables:
 
-Thêm alias vào `~/.zshrc`:
+| Variable     | Default                                  | Purpose                    |
+| ------------ | ---------------------------------------- | -------------------------- |
+| `PORT`       | `3001`                                   | Server port                |
+| `PYTHON_BIN` | `python` (Windows) / `python3` (others)  | Python interpreter to use  |
 
-```bash
-alias vbpl='~/.venvs/vbpl/bin/python ~/Downloads/vbpl_reformat.py'
+## Deploying to Vercel
+
+The repo is Vercel-ready. The Express server is not used on Vercel; instead
+[api/format.py](api/format.py) runs as a Python serverless function and the built client is served
+statically, per [vercel.json](vercel.json):
+
+- `buildCommand: vite build client`, `outputDirectory: client/dist`, with an SPA fallback rewrite
+  (`/api/*` is unaffected — functions take filesystem precedence over rewrites)
+- `api/format.py` is auto-deployed at `/api/format`; Python dependencies come from
+  [requirements.txt](requirements.txt)
+- `maxDuration: 60` and `includeFiles: vbpl_reformat.py` are set for the function
+
+To deploy, either:
+
+1. Push the repo to GitHub/GitLab/Bitbucket and import it at [vercel.com/new](https://vercel.com/new)
+   (keep the Root Directory at the repo root — `api/` must be visible to Vercel), or
+2. Use the CLI: `npm i -g vercel`, then `vercel` from the repo root (`vercel --prod` to go live).
+
+**Limits on Vercel:** request and response bodies are capped at 4.5 MB (uploads above that get
+HTTP 413 before reaching the function — the client shows a friendly message). This cap cannot be
+raised on any plan; if larger files are ever needed, the upload would have to go through
+[Vercel Blob](https://vercel.com/docs/vercel-blob). Typical legal documents are far below the cap.
+
+To test the exact Vercel handler locally (no deploy needed):
+
+```sh
+python test/serve_api_local.py                          # serves api/format.py on :3002
+API_BASE=http://127.0.0.1:3002 node test/test_api.mjs   # e2e suite against it
+python test/verify_vercel_handler.py                    # deep checks (docx validity, 422 path)
 ```
 
-Sau khi `source ~/.zshrc`:
+## Testing
 
-```bash
-vbpl "~/Desktop/VBPL/7_2026_TT-BNV_704494.docx"
+With the server running:
+
+```sh
+python test/make_sample.py      # generate a sample legal document
+node test/test_api.mjs          # end-to-end API tests
 ```
 
-## Loại văn bản hỗ trợ
+## API
 
-Nghị định, Luật, Thông tư, Quyết định, Chỉ thị, Nghị quyết, Pháp lệnh, Thông tư liên tịch.
+`POST /api/format` — multipart form with a `file` field containing a `.docx`.
 
-## Xử lý sự cố
-
-- **`ModuleNotFoundError: No module named 'docx'`** — venv chưa được kích hoạt hoặc chưa cài `python-docx`. Chạy lại bước cài đặt.
-- **`error: externally-managed-environment`** khi cài bằng `pip` trực tiếp — đúng như mong đợi trên macOS Homebrew. Dùng venv như hướng dẫn ở trên thay vì `pip install` toàn cục.
-- **`Không tìm thấy bảng quốc hiệu`** — file input không có bảng quốc hiệu ở đầu (không đúng định dạng văn bản pháp luật chuẩn).
+- `200` — formatted document (`Content-Disposition` carries `<name>_formatted.docx`)
+- `400` — missing file, wrong type, or file over 4.5 MB
+- `422` — document structure not recognized (e.g. missing the national-emblem header table) or corrupt file; body is `{ "error": "<message>" }`
+- `500` — unexpected processing error

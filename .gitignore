@@ -1,0 +1,8 @@
+node_modules/
+.vercel/
+client/dist/
+server/dist/
+*.log
+__pycache__/
+test/*.docx
+test/headers.txt
