@@ -1,7 +1,7 @@
 // End-to-end API tests using Node's built-in fetch/FormData.
 import { readFile } from 'node:fs/promises';
 
-const BASE = 'http://127.0.0.1:3001';
+const BASE = process.env.API_BASE ?? 'http://127.0.0.1:3001';
 let failures = 0;
 
 function check(label, cond, detail = '') {
