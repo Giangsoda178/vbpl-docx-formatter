@@ -82,6 +82,20 @@ LOAI_VAN_BAN_KEYWORDS = {
     'THÔNG TƯ LIÊN TỊCH',
 }
 
+# Tên cơ quan ban hành đứng riêng 1 dòng (đậm, căn giữa) — vd "QUỐC HỘI",
+# "CHÍNH PHỦ". Nhận dạng theo danh sách + đối chiếu với cơ quan ở quốc hiệu.
+CO_QUAN_BODY_KEYWORDS = {
+    'QUỐC HỘI', 'CHÍNH PHỦ', 'ỦY BAN THƯỜNG VỤ QUỐC HỘI',
+    'THỦ TƯỚNG CHÍNH PHỦ', 'CHỦ TỊCH NƯỚC',
+}
+
+# Câu lệnh ban hành đứng riêng (đậm, căn giữa): "QUYẾT NGHỊ:", "NGHỊ ĐỊNH:",
+# "QUYẾT ĐỊNH:", "BAN HÀNH:" — thường nằm ngay trước phần thân điều khoản.
+ENACTING_KEYWORDS = {
+    'QUYẾT NGHỊ:', 'QUYẾT ĐỊNH:', 'NGHỊ ĐỊNH:', 'BAN HÀNH:',
+    'QUYẾT NGHỊ', 'QUYẾT ĐỊNH', 'NGHỊ ĐỊNH', 'BAN HÀNH',
+}
+
 # Các đoạn mở đầu (sẽ in nghiêng + thụt dòng)
 CAN_CU_STARTERS = (
     'Căn cứ',
@@ -298,14 +312,36 @@ def _has_mixed_inline_format(para):
     return has_i and has_ni
 
 
-def _classify(text):
-    """Phân loại 1 đoạn dựa trên nội dung text."""
+def _is_para_bold(para):
+    """Đoạn có toàn bộ (≥ nửa) run là bold không? — dùng cho tiêu đề mục
+    đậm kiểu '1. Quán triệt...' trong nghị quyết Chính phủ."""
+    runs = [r for r in para.runs if r.text.strip()]
+    if not runs:
+        return False
+    bold_runs = [r for r in runs if r.bold]
+    return len(bold_runs) >= len(runs) / 2
+
+
+def _classify(text, co_quan=''):
+    """Phân loại 1 đoạn dựa trên nội dung text.
+
+    co_quan: tên cơ quan lấy từ quốc hiệu — dùng để nhận dạng dòng cơ quan
+    ban hành đứng riêng trong thân bài (vd "QUỐC HỘI", "CHÍNH PHỦ")."""
     text = text.strip()
     if not text:
         return ('blank',)
 
     if text in LOAI_VAN_BAN_KEYWORDS:
         return ('loai_van_ban', text)
+
+    # Dòng câu lệnh ban hành: "QUYẾT NGHỊ:", "NGHỊ ĐỊNH:" ...
+    if text in ENACTING_KEYWORDS:
+        return ('quyet_nghi', text)
+
+    # Dòng tên cơ quan ban hành đứng riêng (đậm, căn giữa)
+    if text in CO_QUAN_BODY_KEYWORDS or (
+            co_quan and text.upper() == co_quan.strip().upper()):
+        return ('co_quan_body', text)
 
     m = re.fullmatch(r'Chương\s+([IVXLCDM]+)', text)
     if m:
@@ -319,6 +355,13 @@ def _classify(text):
     if m:
         return ('dieu', m.group(1), m.group(2).strip())
 
+    # Tiêu đề mục La Mã kiểu Chính phủ: "I. Về quan điểm...", "II. ..."
+    # (số La Mã + dấu chấm + tiêu đề trên cùng dòng). Phân biệt với
+    # "I)" hay danh sách thường bằng cách yêu cầu dấu chấm + khoảng trắng.
+    m = re.match(r'^([IVXLCDM]+)\.\s+(.+)$', text)
+    if m:
+        return ('roman_section', m.group(1), m.group(2).strip())
+
     for starter in CAN_CU_STARTERS:
         if text.startswith(starter):
             return ('can_cu', text)
@@ -326,34 +369,18 @@ def _classify(text):
     return ('khoan', text)
 
 
-def extract_body_items(doc):
-    """Đi qua body của document, trả về list các mục có cấu trúc."""
-    body_xml = doc.element.body
+def _classify_paras(paras, co_quan='', appendix=False):
+    """Phân loại 1 chuỗi paragraph thành list item có cấu trúc.
 
-    # Liệt kê tất cả paragraphs + tables theo đúng thứ tự xuất hiện
-    flow = []   # list of ('p', Paragraph) | ('t', None)
-    for child in body_xml.iterchildren():
-        if child.tag == qn('w:tbl'):
-            flow.append(('t', None))
-        elif child.tag == qn('w:p'):
-            flow.append(('p', Paragraph(child, doc.part)))
-
-    # Xác định ranh giới: bỏ qua bảng đầu (quốc hiệu) và bảng cuối (chữ ký)
-    table_idxs = [i for i, (k, _) in enumerate(flow) if k == 't']
-    if not table_idxs:
-        raise ValueError("Không tìm thấy bảng quốc hiệu.")
-
-    start = table_idxs[0] + 1
-    end = table_idxs[-1] if len(table_idxs) > 1 else len(flow)
-
-    body_paras = [item[1] for item in flow[start:end] if item[0] == 'p']
-
-    # Phân loại với context (chương cần chờ tên ở đoạn kế tiếp)
+    co_quan : tên cơ quan ở quốc hiệu (để nhận dòng cơ quan ban hành).
+    appendix: True khi đang xử lý phần Phụ lục (nhận dạng 'PHỤ LỤC' +
+              tiêu đề phụ lục in nghiêng)."""
     items = []
     pending_chuong_num = None
     pending_loai = None
+    pending_phu_luc = False     # vừa gặp 'PHỤ LỤC' → dòng kế là tiêu đề
 
-    for para in body_paras:
+    for para in paras:
         text = para.text.strip()
         if not text:
             continue
@@ -370,31 +397,111 @@ def extract_body_items(doc):
             pending_loai = None
             continue
 
-        kind = _classify(text)
+        # Đang chờ tiêu đề phụ lục (sau 'PHỤ LỤC')?
+        if pending_phu_luc:
+            items.append(('phu_luc_title', text))
+            pending_phu_luc = False
+            continue
+
+        # Tiêu đề phụ lục
+        if appendix and re.fullmatch(r'PHỤ\s+LỤC(\s+[IVXLCDM\d]+)?', text):
+            items.append(('phu_luc', text))
+            pending_phu_luc = True
+            continue
+
+        kind = _classify(text, co_quan)
         tag = kind[0]
 
         if tag == 'loai_van_ban':
             pending_loai = kind[1]
         elif tag == 'chuong_num':
             pending_chuong_num = kind[1]
-        elif tag in ('muc', 'dieu', 'can_cu'):
+        elif tag in ('muc', 'dieu', 'can_cu', 'roman_section',
+                     'co_quan_body', 'quyet_nghi'):
             items.append(kind)
         else:  # 'khoan'
-            # Kiểm tra inline italic / mixed formatting
+            # Kiểm tra inline italic / mixed / bold formatting
             if _has_mixed_inline_format(para):
                 items.append(('mixed', _runs_with_format(para)))
             elif _is_para_italic(para):
                 items.append(('italic_body', text))
+            elif appendix and _is_para_bold(para):
+                # Tiêu đề mục đậm trong Phụ lục (vd '1. Các bộ...') — giữ đậm.
+                # Trong thân bài chính KHÔNG giữ đậm các đoạn số thứ tự.
+                items.append(('bold_body', text))
             else:
                 items.append(kind)
 
-    # Nếu còn pending — xử lý fallback
+    # Fallback các pending còn dở
     if pending_loai is not None:
         items.append(('title', pending_loai, ''))
     if pending_chuong_num is not None:
         items.append(('chuong', pending_chuong_num, ''))
 
     return items
+
+
+def _find_closing_table_index(flow):
+    """Tìm chỉ số bảng kết (Nơi nhận / chữ ký) trong flow.
+
+    Bảng kết là bảng cuối CÓ chứa 'Nơi nhận' hoặc khối chức danh ký
+    (TM., THỪA LỆNH, CHỦ TỊCH, BỘ TRƯỞNG, THỦ TƯỚNG...). Trả về None nếu
+    không xác định được — khi đó coi như không có khối kết."""
+    SIGN_HINTS = ('Nơi nhận', 'TM.', 'KT.', 'THỪA LỆNH',
+                  'CHỦ TỊCH', 'BỘ TRƯỞNG', 'THỦ TƯỚNG', 'TUQ.')
+    for i in range(len(flow) - 1, -1, -1):
+        kind, payload = flow[i]
+        if kind != 't':
+            continue
+        table = payload
+        cells_text = ' '.join(
+            c.text for row in table.rows for c in row.cells)
+        if any(h in cells_text for h in SIGN_HINTS):
+            return i
+        # Bảng cuối cùng mặc định coi là bảng kết nếu có 2 cột
+        if len(table.columns) >= 2:
+            return i
+    return None
+
+
+def extract_body_items(doc, co_quan=''):
+    """Đi qua body của document, trả về list các mục có cấu trúc.
+
+    Hỗ trợ phần Phụ lục nằm SAU bảng chữ ký (vd nghị quyết Chính phủ)."""
+    body_xml = doc.element.body
+
+    # Liệt kê tất cả paragraphs + tables theo đúng thứ tự xuất hiện
+    flow = []   # list of ('p', Paragraph) | ('t', Table)
+    for child in body_xml.iterchildren():
+        if child.tag == qn('w:tbl'):
+            from docx.table import Table  # noqa: import cục bộ
+            flow.append(('t', Table(child, doc.part)))
+        elif child.tag == qn('w:p'):
+            flow.append(('p', Paragraph(child, doc.part)))
+
+    table_idxs = [i for i, (k, _) in enumerate(flow) if k == 't']
+    if not table_idxs:
+        raise ValueError("Không tìm thấy bảng quốc hiệu.")
+
+    # Quốc hiệu = bảng đầu tiên
+    start = table_idxs[0] + 1
+
+    # Bảng kết (chữ ký / Nơi nhận) ngăn thân bài & phụ lục
+    closing_idx = _find_closing_table_index(flow)
+    if closing_idx is None or closing_idx <= table_idxs[0]:
+        # Không có bảng kết riêng → toàn bộ phần sau quốc hiệu là thân bài
+        main_paras = [it[1] for it in flow[start:] if it[0] == 'p']
+        appendix_paras = []
+    else:
+        main_paras = [it[1] for it in flow[start:closing_idx] if it[0] == 'p']
+        # Mọi paragraph SAU bảng kết = phụ lục
+        appendix_paras = [it[1] for it in flow[closing_idx + 1:]
+                          if it[0] == 'p']
+
+    items = _classify_paras(main_paras, co_quan=co_quan)
+    appendix = _classify_paras(appendix_paras, co_quan=co_quan, appendix=True)
+
+    return items, appendix
 
 
 def extract_closing(doc):
@@ -531,6 +638,60 @@ def _add_can_cu(doc, text):
     _add_run(p, text, italic=True, size=SIZE_BODY)
 
 
+def _add_co_quan_body(doc, text):
+    """Dòng cơ quan ban hành đứng riêng (vd QUỐC HỘI, CHÍNH PHỦ) —
+    đậm, căn giữa."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _add_run(p, text.upper(), bold=True, size=SIZE_DEFAULT)
+
+
+def _add_quyet_nghi(doc, text):
+    """Câu lệnh ban hành (QUYẾT NGHỊ:, NGHỊ ĐỊNH:...) — đậm, căn giữa."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _add_run(p, text, bold=True, size=SIZE_BODY)
+
+
+def _add_roman_section(doc, roman, name):
+    """Tiêu đề mục La Mã kiểu Chính phủ (I., II....): đậm, căn đều,
+    thụt dòng đầu, tiêu đề cùng dòng."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.paragraph_format.first_line_indent = INDENT_FIRST
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _add_run(p, f'{roman}. {name}', bold=True, size=SIZE_BODY)
+
+
+def _add_bold_body(doc, text):
+    """Đoạn thân bài đậm (vd tiêu đề '1. Quán triệt...' trong NQ-CP):
+    đậm, căn đều, thụt dòng đầu."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.paragraph_format.first_line_indent = INDENT_FIRST
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _add_run(p, text, bold=True, size=SIZE_BODY)
+
+
+def _add_phu_luc(doc, text):
+    """Tiêu đề 'PHỤ LỤC' — đậm, căn giữa, sang trang mới."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.page_break_before = True
+    p.paragraph_format.space_after = Pt(6)
+    _add_run(p, text.upper(), bold=True, size=SIZE_BODY)
+
+
+def _add_phu_luc_title(doc, text):
+    """Tiêu đề phụ của phụ lục — in nghiêng, căn giữa."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_after = Pt(6)
+    _add_run(p, text, italic=True, bold=True, size=SIZE_BODY)
+
+
 def _add_chuong(doc, roman, name):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -647,7 +808,27 @@ def _add_closing_table(doc, recipients, position_lines, signer,
         _add_run(p, signer, bold=True, size=SIZE_BODY)
 
 
-def build_document(metadata, body_items, closing):
+def _make_dispatch(doc):
+    """Bảng điều phối tag → hàm dựng đoạn, dùng chung cho body & phụ lục."""
+    return {
+        'title':         lambda it: _add_title_block(doc, it[1], it[2]),
+        'can_cu':        lambda it: _add_can_cu(doc, it[1]),
+        'co_quan_body':  lambda it: _add_co_quan_body(doc, it[1]),
+        'quyet_nghi':    lambda it: _add_quyet_nghi(doc, it[1]),
+        'chuong':        lambda it: _add_chuong(doc, it[1], it[2]),
+        'muc':           lambda it: _add_muc(doc, it[1], it[2]),
+        'dieu':          lambda it: _add_dieu(doc, it[1], it[2]),
+        'roman_section': lambda it: _add_roman_section(doc, it[1], it[2]),
+        'khoan':         lambda it: _add_khoan(doc, it[1]),
+        'italic_body':   lambda it: _add_italic_body(doc, it[1]),
+        'bold_body':     lambda it: _add_bold_body(doc, it[1]),
+        'mixed':         lambda it: _add_mixed(doc, it[1]),
+        'phu_luc':       lambda it: _add_phu_luc(doc, it[1]),
+        'phu_luc_title': lambda it: _add_phu_luc_title(doc, it[1]),
+    }
+
+
+def build_document(metadata, body_items, closing, appendix=None):
     doc = Document()
 
     # Page setup
@@ -673,16 +854,7 @@ def build_document(metadata, body_items, closing):
     _add_header_table(doc, **metadata)
 
     # Body
-    dispatch = {
-        'title':       lambda it: _add_title_block(doc, it[1], it[2]),
-        'can_cu':      lambda it: _add_can_cu(doc, it[1]),
-        'chuong':      lambda it: _add_chuong(doc, it[1], it[2]),
-        'muc':         lambda it: _add_muc(doc, it[1], it[2]),
-        'dieu':        lambda it: _add_dieu(doc, it[1], it[2]),
-        'khoan':       lambda it: _add_khoan(doc, it[1]),
-        'italic_body': lambda it: _add_italic_body(doc, it[1]),
-        'mixed':       lambda it: _add_mixed(doc, it[1]),
-    }
+    dispatch = _make_dispatch(doc)
     for item in body_items:
         handler = dispatch.get(item[0])
         if handler:
@@ -692,6 +864,13 @@ def build_document(metadata, body_items, closing):
     if closing and (closing['recipients'] or closing['position_lines']
                     or closing['signer']):
         _add_closing_table(doc, **closing)
+
+    # Phụ lục (sau khối chữ ký)
+    if appendix:
+        for item in appendix:
+            handler = dispatch.get(item[0])
+            if handler:
+                handler(item)
 
     # Vá lỗi zoom của python-docx
     zoom = doc.settings.element.find(qn('w:zoom'))
@@ -712,7 +891,7 @@ def reformat(input_path, output_path, verbose=True):
     src = Document(str(input_path))
 
     metadata = extract_metadata(src)
-    body_items = extract_body_items(src)
+    body_items, appendix = extract_body_items(src, co_quan=metadata['co_quan'])
     closing = extract_closing(src)
 
     if verbose:
@@ -721,13 +900,16 @@ def reformat(input_path, output_path, verbose=True):
         print(f"   ▸ Ngày ban hành : {metadata['ngay_ban_hanh']}")
         # Đếm các loại item
         counts = {}
-        for it in body_items:
+        for it in body_items + appendix:
             counts[it[0]] = counts.get(it[0], 0) + 1
         print(f"   ▸ Nội dung phát hiện:")
         labels = {
             'title': 'Tiêu đề', 'can_cu': 'Căn cứ', 'chuong': 'Chương',
             'muc': 'Mục', 'dieu': 'Điều', 'khoan': 'Khoản/đoạn',
             'italic_body': 'Đoạn in nghiêng', 'mixed': 'Đoạn pha định dạng',
+            'co_quan_body': 'Cơ quan ban hành', 'quyet_nghi': 'Câu lệnh ban hành',
+            'roman_section': 'Mục La Mã (I, II...)', 'bold_body': 'Đoạn đậm',
+            'phu_luc': 'Phụ lục', 'phu_luc_title': 'Tiêu đề phụ lục',
         }
         for tag, count in counts.items():
             print(f"       - {labels.get(tag, tag):20s}: {count}")
@@ -736,8 +918,10 @@ def reformat(input_path, output_path, verbose=True):
                   f"người ký: {closing['signer'] or '(không)'}")
         else:
             print(f"   ▸ Khối kết      : không có")
+        if appendix:
+            print(f"   ▸ Phụ lục       : {len(appendix)} đoạn")
 
-    doc = build_document(metadata, body_items, closing)
+    doc = build_document(metadata, body_items, closing, appendix=appendix)
     doc.save(str(output_path))
     if verbose:
         print(f"✅ Đã xuất: {output_path}")
