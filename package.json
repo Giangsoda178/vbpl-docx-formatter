@@ -1,0 +1,30 @@
+{
+  "name": "vbpl-docx-formatter",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Web app for reformatting Vietnamese legal documents (.docx) via vbpl_reformat.py",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch server/src/index.ts",
+    "dev:client": "vite client",
+    "build": "vite build client && tsc -p server",
+    "start": "node server/dist/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.1.1"
+  },
+  "overrides": {
+    "shell-quote": "^1.8.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}
