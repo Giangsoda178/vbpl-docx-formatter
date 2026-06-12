@@ -26,20 +26,23 @@
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
         <p class="dropzone-title">Kéo thả file .docx vào đây</p>
-        <p class="dropzone-hint">hoặc bấm để chọn file (tối đa 4.5 MB)</p>
-        <input type="file" id="file-input" accept=".docx" hidden />
+        <p class="dropzone-hint">hoặc bấm để chọn file — có thể chọn nhiều file (mỗi file tối đa 4.5 MB)</p>
+        <input type="file" id="file-input" accept=".docx" multiple hidden />
       </div>
 
-      <div id="file-info" class="file-info" hidden>
-        <span id="file-name" class="file-name"></span>
-        <button id="clear-btn" class="clear-btn" type="button" aria-label="Bỏ chọn file">✕</button>
-      </div>
+      <ul id="file-list" class="file-list" hidden></ul>
 
       <button id="format-btn" class="format-btn" type="button" disabled>
         Xử lý văn bản
       </button>
 
       <div id="status" class="status" hidden></div>
+
+      <button id="download-all-btn" class="download-all-btn" type="button" hidden>
+        Tải tất cả (.zip)
+      </button>
+
+      <ul id="result-list" class="result-list" hidden></ul>
     </main>
 
     <script type="module" src="/src/main.ts"></script>
