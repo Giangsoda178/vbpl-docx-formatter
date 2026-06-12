@@ -2,11 +2,11 @@
 
 Web app for reformatting Vietnamese legal documents (Nghị định, Luật, Thông tư, Quyết định, Nghị quyết, Chỉ thị) in `.docx` format to the standard administrative document style (Times New Roman 14pt, justified, first-line indent, bold Điều/Chương/Mục headings, italic Căn cứ, …).
 
-Upload a `.docx` in the browser → the backend runs [vbpl_reformat.py](vbpl_reformat.py) → download the formatted result.
+Upload one or more `.docx` files in the browser → the backend runs [vbpl_reformat.py](vbpl_reformat.py) on each → download the formatted results.
 
 ## Architecture
 
-- **[client/](client/)** — Vite + TypeScript single-page frontend (drag-and-drop upload, download)
+- **[client/](client/)** — Vite + TypeScript single-page frontend (drag-and-drop multi-file upload; sends one `/api/format` request per file with bounded concurrency and lists each result with its own download button, plus a "Tải tất cả" button that bundles all formatted files into a ZIP client-side via fflate)
 - **[server/](server/)** — Express + TypeScript API; `POST /api/format` writes the upload to a temp dir, spawns the Python script, streams back the formatted file, and cleans up (used for local dev / self-hosting)
 - **[api/format.py](api/format.py)** — the same `POST /api/format` endpoint as a Vercel Python serverless function; calls the formatting engine in-process (used on Vercel)
 - **[vbpl_reformat.py](vbpl_reformat.py)** — the formatting engine (python-docx)
