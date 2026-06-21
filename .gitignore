@@ -6,3 +6,4 @@ server/dist/
 __pycache__/
 test/*.docx
 test/headers.txt
+*.docx
