@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat)",
+      "Bash(.venv/bin/python /tmp/inspect.py \"29_2026_QH16_704652.docx\")"
+    ]
+  }
+}
