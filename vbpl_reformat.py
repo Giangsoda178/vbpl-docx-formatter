@@ -119,6 +119,11 @@ ATTACHED_DOC_KEYWORDS = {
 # chữ (Times New Roman) và cỡ chữ — thay vì dựng lại theo style chuẩn.
 MAU_HEADING_RE = re.compile(r'^\s*Mẫu\s+(số\s+)?\d+', re.IGNORECASE)
 
+# Tiêu đề danh mục mẫu biểu đứng riêng (vd "DANH MỤC 1", "DANH MỤC 2") —
+# mỗi danh mục bắt đầu một trang mới (giống Phụ lục / Mẫu số). Yêu cầu có số
+# theo sau để không nhầm với tiêu đề con kiểu "DANH MỤC XUẤT BẢN PHẨM...".
+DANH_MUC_HEADING_RE = re.compile(r'^DANH MỤC\s+\d', re.IGNORECASE)
+
 # Các đoạn mở đầu (sẽ in nghiêng + thụt dòng)
 CAN_CU_STARTERS = (
     'Căn cứ',
@@ -566,7 +571,9 @@ def _classify_flow(flow_items, co_quan='', appendix=False):
             centered = para.alignment == WD_ALIGN_PARAGRAPH.CENTER
             # Trong Phụ lục: giữ các dòng tiêu đề căn giữa của Mẫu biểu
             # (vd 'DANH SÁCH' đậm, '(Ban hành kèm theo...)' nghiêng).
-            if appendix and centered and _is_para_bold(para):
+            if appendix and centered and DANH_MUC_HEADING_RE.match(text):
+                items.append(('danh_muc', text))
+            elif appendix and centered and _is_para_bold(para):
                 items.append(('center_bold', text))
             elif appendix and centered and _is_para_italic(para):
                 items.append(('center_italic', text))
@@ -974,6 +981,16 @@ def _add_mau_so(doc, text):
     p.paragraph_format.page_break_before = True
     p.paragraph_format.space_after = Pt(6)
     _add_run(p, text, bold=True, size=SIZE_BODY)
+
+
+def _add_danh_muc(doc, text):
+    """Tiêu đề 'DANH MỤC N' của một danh mục mẫu biểu trong Phụ lục — đậm,
+    căn giữa, sang trang mới (mỗi danh mục bắt đầu một trang riêng)."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.page_break_before = True
+    p.paragraph_format.space_after = Pt(6)
+    _add_run(p, text.upper(), bold=True, size=SIZE_BODY)
 
 
 def _add_center_bold(doc, text):
@@ -1467,7 +1484,15 @@ def _add_mau_paragraph(doc, src_para):
     """Chép nguyên 1 paragraph của Mẫu biểu — giữ định dạng gốc (căn lề,
     thụt dòng, đậm/nghiêng, dòng chấm…), chỉ chuẩn hóa font + cỡ chữ."""
     new_p = _append_raw_element(doc, src_para._p)
-    for run in Paragraph(new_p, doc.part).runs:
+    para = Paragraph(new_p, doc.part)
+    # Mỗi tiêu đề 'Mẫu số NN' / 'DANH MỤC N' đứng riêng → sang trang mới (giữ
+    # nguyên định dạng gốc nhưng tách trang cho từng mẫu/danh mục, vì file gốc
+    # thường để các mẫu chạy liền nhau chỉ cách bằng dòng trống). Giới hạn độ
+    # dài để không nhầm câu văn bắt đầu bằng 'Mẫu số ...' là tiêu đề.
+    t = para.text.strip()
+    if (MAU_HEADING_RE.match(t) and len(t) < 80) or DANH_MUC_HEADING_RE.match(t):
+        para.paragraph_format.page_break_before = True
+    for run in para.runs:
         _force_run_font(run, SIZE_MAU)
 
 
@@ -1506,6 +1531,7 @@ def _make_dispatch(doc):
         'phu_luc_title': lambda it: _add_phu_luc_title(doc, it[1]),
         'phu_luc_ref':   lambda it: _add_phu_luc_ref(doc, it[1]),
         'mau_so':        lambda it: _add_mau_so(doc, it[1]),
+        'danh_muc':      lambda it: _add_danh_muc(doc, it[1]),
         'center_bold':   lambda it: _add_center_bold(doc, it[1]),
         'center_italic': lambda it: _add_center_italic(doc, it[1]),
         'center_normal': lambda it: _add_center_normal(doc, it[1]),
