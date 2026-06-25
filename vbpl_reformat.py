@@ -67,6 +67,7 @@ except ImportError as exc:
 DEFAULT_FONT = "Times New Roman"
 SIZE_DEFAULT = 12       # Quốc hiệu, NGHỊ ĐỊNH/LUẬT, chữ ký
 SIZE_BODY = 14          # Thân bài, Điều, Căn cứ, tiêu đề dài
+SIZE_HEADING = 12       # Trích yếu, Chương, Mục, mục La Mã, PHỤ LỤC (Điều giữ 14)
 SIZE_DOC_NUMBER = 13    # Số văn bản
 SIZE_RECIPIENTS = 11    # Danh sách Nơi nhận
 SIZE_TABLE = 12         # Nội dung bảng dữ liệu (Phụ lục)
@@ -80,8 +81,9 @@ SPACE_ZERO = Pt(0)
 
 PAGE_WIDTH = Cm(21.59)    # 8.5"
 PAGE_HEIGHT = Cm(27.94)   # 11"
-MARGIN_TOP = Cm(2.22)
-MARGIN_OTHER = Cm(2.54)
+MARGIN_TOP = Cm(1.5)      # Lề trên (khớp mẫu desired ND_so_132)
+MARGIN_BOTTOM = Cm(1.5)   # Lề dưới
+MARGIN_OTHER = Cm(2.54)   # Lề trái/phải = 1"
 
 # Các loại văn bản nhận dạng được
 LOAI_VAN_BAN_KEYWORDS = {
@@ -871,6 +873,18 @@ def _add_header_table(doc, co_quan, so_van_ban, dia_diem,
              italic=True, size=SIZE_BODY)
 
 
+def _compact(p):
+    """Giãn dòng đơn (single) + bỏ cách đoạn sau cho 1 đoạn thân bài —
+    chuẩn trình bày VBHC Việt Nam. Tránh giá trị mặc định của python-docx
+    (giãn dòng 1.15, cách đoạn sau ~10pt) làm văn bản bị thưa, dài thêm trang.
+    Chỉ áp cho các đoạn DỰNG LẠI; không đụng tới khối tiêu đề, bảng, hay Mẫu
+    biểu giữ nguyên gốc (để các phần đó kế thừa mặc định như mẫu desired)."""
+    pf = p.paragraph_format
+    pf.line_spacing = 1.0
+    pf.space_after = SPACE_ZERO
+    return p
+
+
 def _add_title_block(doc, loai_van_ban, tieu_de):
     # Đoạn trống
     p = doc.add_paragraph()
@@ -889,7 +903,7 @@ def _add_title_block(doc, loai_van_ban, tieu_de):
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = SPACE_BEFORE
-        _add_run(p, tieu_de, bold=True, size=SIZE_BODY)
+        _add_run(p, tieu_de, bold=True, size=SIZE_HEADING)
 
 
 def _add_can_cu(doc, text):
@@ -897,6 +911,7 @@ def _add_can_cu(doc, text):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, italic=True, size=SIZE_BODY)
 
 
@@ -906,6 +921,7 @@ def _add_co_quan_body(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text.upper(), bold=True, size=SIZE_DEFAULT)
 
 
@@ -914,6 +930,7 @@ def _add_quyet_nghi(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, bold=True, size=SIZE_BODY)
 
 
@@ -924,7 +941,8 @@ def _add_roman_section(doc, roman, name):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
-    _add_run(p, f'{roman}. {name}', bold=True, size=SIZE_BODY)
+    _compact(p)
+    _add_run(p, f'{roman}. {name}', bold=True, size=SIZE_HEADING)
 
 
 def _add_bold_body(doc, text):
@@ -934,6 +952,7 @@ def _add_bold_body(doc, text):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, bold=True, size=SIZE_BODY)
 
 
@@ -942,8 +961,9 @@ def _add_phu_luc(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.page_break_before = True
-    p.paragraph_format.space_after = Pt(6)
-    _add_run(p, text.upper(), bold=True, size=SIZE_BODY)
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
+    _add_run(p, text.upper(), bold=True, size=SIZE_HEADING)
 
 
 def _add_attached_doc(doc, text):
@@ -952,7 +972,7 @@ def _add_attached_doc(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = SPACE_BEFORE
-    p.paragraph_format.space_after = Pt(6)
+    _compact(p)
     _add_run(p, text.upper(), bold=True, size=SIZE_BODY)
 
 
@@ -960,8 +980,9 @@ def _add_phu_luc_title(doc, text):
     """Tiêu đề phụ của phụ lục — đậm, căn giữa."""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(6)
-    _add_run(p, text, bold=True, size=SIZE_BODY)
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
+    _add_run(p, text, bold=True, size=SIZE_HEADING)
 
 
 def _add_phu_luc_ref(doc, text):
@@ -969,17 +990,18 @@ def _add_phu_luc_ref(doc, text):
     in nghiêng, căn giữa."""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, italic=True, size=SIZE_BODY)
 
 
 def _add_mau_so(doc, text):
-    """Tiêu đề 'Mẫu số 01' của một mẫu biểu trong Phụ lục — đậm, căn phải,
-    sang trang mới (mỗi mẫu biểu bắt đầu trang riêng)."""
+    """Tiêu đề 'Mẫu số 01' của một mẫu biểu trong Phụ lục — đậm, căn phải.
+    Các mẫu chạy liền nhau (không ngắt trang) theo mẫu desired ND_so_132."""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.paragraph_format.page_break_before = True
-    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, bold=True, size=SIZE_BODY)
 
 
@@ -989,7 +1011,8 @@ def _add_danh_muc(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.page_break_before = True
-    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text.upper(), bold=True, size=SIZE_BODY)
 
 
@@ -999,6 +1022,7 @@ def _add_center_bold(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, bold=True, size=SIZE_BODY)
 
 
@@ -1007,7 +1031,8 @@ def _add_center_italic(doc, text):
     Quyết định số ...)')."""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, italic=True, size=SIZE_BODY)
 
 
@@ -1092,6 +1117,7 @@ def _add_center_normal(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, size=SIZE_BODY)
 
 
@@ -1101,6 +1127,7 @@ def _add_don_vi(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, italic=True, size=SIZE_BODY)
 
 
@@ -1335,13 +1362,15 @@ def _add_chuong(doc, roman, name, quote=''):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = SPACE_BEFORE
-    _add_run(p, f'{quote}Chương {roman}', bold=True, size=SIZE_BODY)
+    _compact(p)
+    _add_run(p, f'{quote}Chương {roman}', bold=True, size=SIZE_HEADING)
 
     if name:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = SPACE_BEFORE
-        _add_run(p, name.upper(), bold=True, size=SIZE_BODY)
+        _compact(p)
+        _add_run(p, name.upper(), bold=True, size=SIZE_HEADING)
 
 
 def _add_muc(doc, so, name, quote=''):
@@ -1349,7 +1378,8 @@ def _add_muc(doc, so, name, quote=''):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
-    _add_run(p, f'{quote}Mục {so}. {name.upper()}', bold=True, size=SIZE_BODY)
+    _compact(p)
+    _add_run(p, f'{quote}Mục {so}. {name.upper()}', bold=True, size=SIZE_HEADING)
 
 
 def _add_dieu(doc, so, name, quote=''):
@@ -1362,6 +1392,7 @@ def _add_dieu(doc, so, name, quote=''):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, f'{quote}Điều {so}. {name}', bold=True, size=SIZE_BODY)
 
 
@@ -1370,6 +1401,7 @@ def _add_khoan(doc, text):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, size=SIZE_BODY)
 
 
@@ -1378,6 +1410,7 @@ def _add_italic_body(doc, text):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     _add_run(p, text, italic=True, size=SIZE_BODY)
 
 
@@ -1387,6 +1420,7 @@ def _add_mixed(doc, parts):
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p.paragraph_format.first_line_indent = INDENT_FIRST
     p.paragraph_format.space_before = SPACE_BEFORE
+    _compact(p)
     for text, fmt in parts:
         _add_run(p, text,
                  bold=fmt.get('bold', False),
@@ -1485,12 +1519,11 @@ def _add_mau_paragraph(doc, src_para):
     thụt dòng, đậm/nghiêng, dòng chấm…), chỉ chuẩn hóa font + cỡ chữ."""
     new_p = _append_raw_element(doc, src_para._p)
     para = Paragraph(new_p, doc.part)
-    # Mỗi tiêu đề 'Mẫu số NN' / 'DANH MỤC N' đứng riêng → sang trang mới (giữ
-    # nguyên định dạng gốc nhưng tách trang cho từng mẫu/danh mục, vì file gốc
-    # thường để các mẫu chạy liền nhau chỉ cách bằng dòng trống). Giới hạn độ
-    # dài để không nhầm câu văn bắt đầu bằng 'Mẫu số ...' là tiêu đề.
+    # 'DANH MỤC N' (danh mục mẫu biểu) vẫn bắt đầu một trang mới. Còn các
+    # 'Mẫu số NN' chạy liền nhau (KHÔNG ngắt trang) — theo mẫu desired
+    # ND_so_132, các mẫu chỉ cách nhau bằng dòng trống của file gốc.
     t = para.text.strip()
-    if (MAU_HEADING_RE.match(t) and len(t) < 80) or DANH_MUC_HEADING_RE.match(t):
+    if DANH_MUC_HEADING_RE.match(t):
         para.paragraph_format.page_break_before = True
     for run in para.runs:
         _force_run_font(run, SIZE_MAU)
@@ -1552,7 +1585,7 @@ def build_document(metadata, body_items, closing, appendix=None):
     section.page_width = PAGE_WIDTH
     section.page_height = PAGE_HEIGHT
     section.top_margin = MARGIN_TOP
-    section.bottom_margin = MARGIN_OTHER
+    section.bottom_margin = MARGIN_BOTTOM
     section.left_margin = MARGIN_OTHER
     section.right_margin = MARGIN_OTHER
     section.header_distance = Cm(1.27)
